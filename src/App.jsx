@@ -773,9 +773,9 @@ export default function App() {
 
         <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-950 to-zinc-900 p-6 shadow-xl">
           <div className="mb-3 text-center text-xs uppercase tracking-widest text-zinc-500">Sentence {Math.min(index + 1, sentences.length)} of {sentences.length}</div>
-          <div className="mb-2 line-clamp-1 text-center text-sm text-zinc-500">{prevText}</div>
+          <div className="mb-2 line-clamp-1 text-center text-3xl text-zinc-500">{prevText}</div>
           <div className="mx-auto mb-2 max-w-3xl text-center text-3xl font-semibold leading-relaxed text-cyan-200">{currText}</div>
-          <div className="mt-2 line-clamp-1 text-center text-sm text-zinc-500">{nextText}</div>
+          <div className="mt-2 line-clamp-1 text-center text-3xl text-zinc-500">{nextText}</div>
           <div className="pointer-events-none absolute right-4 top-4 flex items-center gap-2 text-sm">
             <span className={clsx("inline-flex h-2.5 w-2.5 rounded-full", isRecording ? "bg-red-500 animate-pulse" : "bg-zinc-600")}></span>
             <span className={clsx(isRecording ? "text-red-400" : "text-zinc-400")}>{isRecording ? "Recording" : "Idle"}</span>
