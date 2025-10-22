@@ -2,17 +2,14 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
-# Required for Pages deploy to sign the artifact URL (OIDC)
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# Avoid overlapping deploys
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -21,39 +18,23 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Use Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
-      - name: Install deps
+      - name: Install
         run: npm ci
 
       - name: Build
-        run: npm run build
+        run: npm run build   # Vite outputs to ./dist by default
 
-      # Copy *all* files including dotfiles (e.g. .nojekyll)
-      - name: Normalize build output
-        run: |
-          mkdir -p build
-          if [ -d "dist" ] && [ ! -d "build" ]; then
-            echo "Vite-style dist/ found -> copying to build/"
-            rsync -a dist/ build/
-          elif [ -d "build" ]; then
-            echo "CRA-style build/ found -> using as-is"
-          else
-            echo "No dist/ or build/ found -> failing"
-            exit 1
-          fi
-          ls -la build || true
-
-      - name: Upload Pages artifact
+      - name: Upload Pages artifact (Vite dist)
         uses: actions/upload-pages-artifact@v4
         with:
-          path: ./build
+          path: ./dist
 
   deploy:
     needs: build
