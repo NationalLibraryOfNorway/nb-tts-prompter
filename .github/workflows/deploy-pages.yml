@@ -1,0 +1,47 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - main   # change if your default branch is different (e.g. "master")
+
+jobs:
+  build_and_publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Normalize build output (support CRA ./build and Vite ./dist)
+        run: |
+          if [ -d "dist" ] && [ ! -d "build" ]; then
+            echo "Found dist/ (Vite). Copying to build/ for Pages action..."
+            mkdir -p build
+            cp -r dist/* build/
+          else
+            echo "Using build/ output"
+          fi
+          ls -la build || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: ./build
+
+  deploy:
+    needs: build_and_publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v1
