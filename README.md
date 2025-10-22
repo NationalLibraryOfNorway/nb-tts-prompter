@@ -2,13 +2,6 @@
 
 Minimal, keyboard-friendly web app to **prompt readers and record speech** for building TTS datasets. It supports **TXT / CSV / JSONL** scripts, logs **every action with timestamps**, and can **package recordings into a ready-to-use dataset**.
 
-> This repository includes:
->
-> * `Tts Prompter (react)`: the React UI
-> * `nb-tts-utils.ts`: shared standalone utilities (parsing, audio, storage, segmentation, beeps)
->
-> The UI imports from `./nb-tts-utils` and persists data per **Code** (speaker id) and per **Script** in `localStorage`.
-
 ---
 
 ## ✨ Features
