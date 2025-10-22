@@ -1,26 +1,33 @@
 name: Deploy to GitHub Pages
 
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Required for Pages deploy to sign the artifact URL (OIDC)
 permissions:
   contents: read
   pages: write
   id-token: write
 
-on:
-  push:
-    branches:
-      - main   # change if your default branch is different (e.g. "master")
+# Avoid overlapping deploys
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
 
 jobs:
-  build_and_publish:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
 
       - name: Install deps
         run: npm ci
@@ -28,14 +35,18 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Normalize build output (support CRA ./build and Vite ./dist)
+      # Copy *all* files including dotfiles (e.g. .nojekyll)
+      - name: Normalize build output
         run: |
+          mkdir -p build
           if [ -d "dist" ] && [ ! -d "build" ]; then
-            echo "Found dist/ (Vite). Copying to build/ for Pages action..."
-            mkdir -p build
-            cp -r dist/* build/
+            echo "Vite-style dist/ found -> copying to build/"
+            rsync -a dist/ build/
+          elif [ -d "build" ]; then
+            echo "CRA-style build/ found -> using as-is"
           else
-            echo "Using build/ output"
+            echo "No dist/ or build/ found -> failing"
+            exit 1
           fi
           ls -la build || true
 
@@ -45,8 +56,11 @@ jobs:
           path: ./build
 
   deploy:
-    needs: build_and_publish
+    needs: build
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+      - id: deployment
+        uses: actions/deploy-pages@v4
