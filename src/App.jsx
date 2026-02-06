@@ -205,7 +205,7 @@ async function playBeep(freq = 880, duration = 0.12, volume = 0.2) {
 const splitLines = (text) => text.split(/\r?\n/);
 
 function parseTxt(txt) {
-  return splitLines(txt).map((s) => s.trim()).filter(Boolean);
+  return splitLines(txt).map((s) => s.trim()).filter(Boolean).map(text => ({ text, id: null }));
 }
 
 function parseCsv(txt, opts = {}) {
@@ -218,7 +218,7 @@ function parseCsv(txt, opts = {}) {
   const values = [];
   for (let i = start; i < rows.length; i++) {
     const v = (rows[i][idx] ?? "").trim();
-    if (v) values.push(v);
+    if (v) values.push({ text: v, id: null });
   }
   return { values, headers };
 }
@@ -228,7 +228,13 @@ function parseJsonl(txt, opts = {}) {
   return splitLines(txt)
     .filter(Boolean)
     .map((line) => {
-      try { const obj = JSON.parse(line); return obj?.[key]?.toString().trim() ?? null; } catch { return null; }
+      try { 
+        const obj = JSON.parse(line); 
+        const text = obj?.[key]?.toString().trim() ?? null;
+        if (!text) return null;
+        // Return object with text and id (if present)
+        return { text, id: obj?.id ?? null };
+      } catch { return null; }
     })
     .filter(Boolean);
 }
@@ -249,42 +255,46 @@ function runParsingTests() {
     assertEqual(
       "parseTxt() trims & drops empties",
       parseTxt("a\n\nb\r\n c \n\n"),
-      ["a", "b", "c"]
+      [{text: "a", id: null}, {text: "b", id: null}, {text: "c", id: null}]
     );
 
     // CSV default: header present, first column
     const csv1 = "h1,h2\nhello,meta\nworld,foo\n";
     const { values: csvVals1, headers: csvHdr1 } = parseCsv(csv1, { columnIndex: 0, hasHeader: true });
-    assertEqual("parseCsv() default first column with header", csvVals1, ["hello", "world"]);
+    assertEqual("parseCsv() default first column with header", csvVals1, [{text: "hello", id: null}, {text: "world", id: null}]);
     assertEqual("parseCsv() header parsed", csvHdr1, ["h1", "h2"]);
 
     // CSV choose other column
     const { values: csvVals2 } = parseCsv(csv1, { columnIndex: 1, hasHeader: true });
-    assertEqual("parseCsv() select second column", csvVals2, ["meta", "foo"]);
+    assertEqual("parseCsv() select second column", csvVals2, [{text: "meta", id: null}, {text: "foo", id: null}]);
 
     // CSV without header
     const csv2 = "a,b\nc,d\n";
     const { values: csvVals3, headers: csvHdr3 } = parseCsv(csv2, { columnIndex: 1, hasHeader: false });
-    assertEqual("parseCsv() no header second column", csvVals3, ["b", "d"]);
+    assertEqual("parseCsv() no header second column", csvVals3, [{text: "b", id: null}, {text: "d", id: null}]);
     assertEqual("parseCsv() synthetic headers when no header", csvHdr3, ["col_0", "col_1"]);
 
     // CSV clamp excessive column index to last column
     const csv3 = "h1,h2\n1,2\n3,4\n";
     const { values: csvVals4 } = parseCsv(csv3, { columnIndex: 99, hasHeader: true });
-    assertEqual("parseCsv() clamps out-of-range column index", csvVals4, ["2", "4"]);
+    assertEqual("parseCsv() clamps out-of-range column index", csvVals4, [{text: "2", id: null}, {text: "4", id: null}]);
 
     // JSONL default key
     const jsonl1 = '{"text":"hi"}\n{"text":"there"}\n{"nottext":"x"}\n';
-    assertEqual("parseJsonl() default key", parseJsonl(jsonl1), ["hi", "there"]);
+    assertEqual("parseJsonl() default key", parseJsonl(jsonl1), [{text: "hi", id: null}, {text: "there", id: null}]);
 
     // JSONL custom key
     const jsonl2 = '{"sentence":"one"}\n{"sentence":"two"}\n{"text":"ignored"}\n';
-    assertEqual("parseJsonl() custom key", parseJsonl(jsonl2, { key: "sentence" }), ["one", "two"]);
+    assertEqual("parseJsonl() custom key", parseJsonl(jsonl2, { key: "sentence" }), [{text: "one", id: null}, {text: "two", id: null}]);
+
+    // JSONL with id field
+    const jsonl3 = '{"text":"hello","id":"abc123"}\n{"text":"world","id":"def456"}\n';
+    assertEqual("parseJsonl() preserves id field", parseJsonl(jsonl3), [{text: "hello", id: "abc123"}, {text: "world", id: "def456"}]);
 
     // EXTRA tests
     assertEqual("splitLines handles trailing newline", splitLines("x\n"), ["x", ""]);
     const badJsonl = '{"text":"ok"}\nnot-json\n{"text":"fine"}\n';
-    assertEqual("parseJsonl() skips invalid lines", parseJsonl(badJsonl), ["ok", "fine"]);
+    assertEqual("parseJsonl() skips invalid lines", parseJsonl(badJsonl), [{text: "ok", id: null}, {text: "fine", id: null}]);
 
     // NEW: segmentation by nav events
     const t0 = Date.now();
@@ -565,7 +575,7 @@ export default function App() {
     await sleep(50);
 
     const zip = new JSZip();
-    const metaRows = [["file","sentence_index","text","session_id","user_code","duration_sec","offset_start_sec","offset_end_sec"].join(",")];
+    const metaRows = [["file","sentence_index","text","id","session_id","user_code","duration_sec","offset_start_sec","offset_end_sec"].join(",")];
     const eventsRows = [["ts","action","index","session_id","user_code"].join(",")];
 
     // events: include only navigation and recording markers
@@ -589,8 +599,10 @@ export default function App() {
       const durationSec = seg.pcm.length / targetRate;
       const startSec = offsetSamples / targetRate;
       const endSec = (offsetSamples + seg.pcm.length) / targetRate;
-      const sentenceText = sentences[seg.idx] ?? "";
-      metaRows.push([fname, seg.idx, JSON.stringify(sentenceText), seg.sessionId, userCode, durationSec.toFixed(3), startSec.toFixed(3), endSec.toFixed(3)].join(","));
+      const sentenceObj = sentences[seg.idx] ?? { text: "", id: null };
+      const sentenceText = sentenceObj.text ?? "";
+      const sentenceId = sentenceObj.id ?? "";
+      metaRows.push([fname, seg.idx, JSON.stringify(sentenceText), JSON.stringify(sentenceId), seg.sessionId, userCode, durationSec.toFixed(3), startSec.toFixed(3), endSec.toFixed(3)].join(","));
       offsetSamples += seg.pcm.length;
       setProgress(40 + Math.round((40 * (i + 1)) / Math.max(1, allSegments.length)));
       setProgressMsg(`Packaging clips ${i + 1}/${allSegments.length}...`);
@@ -618,9 +630,9 @@ export default function App() {
     downloadBlob(blob, `${projectName || "project"}_${userCode}_log.jsonl`);
   }
 
-  const prevText = sentences[index - 1] || "";
-  const currText = sentences[index] || "Upload a script to get started.";
-  const nextText = sentences[index + 1] || "";
+  const prevText = sentences[index - 1]?.text || "";
+  const currText = sentences[index]?.text || "Upload a script to get started.";
+  const nextText = sentences[index + 1]?.text || "";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-indigo-500/50">
